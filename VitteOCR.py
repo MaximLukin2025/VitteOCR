@@ -283,7 +283,7 @@ train_dl = DataLoader(train_ds, batch_size=8, shuffle=True, collate_fn=collate_f
 val_dl   = DataLoader(val_ds,   batch_size=8, shuffle=False, collate_fn=collate_fn)
 
 # ==============================================================
-# 10. CRNN-CTC модель
+# 10. CRNN-CTC модель (без изменений)
 # ==============================================================
 class CRNN(nn.Module):
     def __init__(self, cnn_out=256, num_classes=len(char2idx)+1):
@@ -316,9 +316,6 @@ opt = torch.optim.Adam(model.parameters(), lr=1e-4)
 def train_epoch(dl):
     model.train(); tot=0
     for imgs, labels, lbl_lens in dl:
-        T = model(imgs.to(device)).size(1)   # длина выходной оси
-        assert (T >= lbl_lens).all(), f"T={T}, y={lbl_lens}"
-        break
         imgs = imgs.to(device)
         out  = model(imgs)               # B×T×C
         T = out.size(1)
@@ -365,53 +362,12 @@ for idx in pred:
 print("Картинка:", test_img.name)
 print("Предсказание:", decode_seq(out))
 
-# ---------------------------------------------------------------
-# 13. Экспорт ONNX + динамическая квантизация
-# ---------------------------------------------------------------
-dummy = torch.randn(1,1,64,512).to(device)   # фиксируем макс ширину 512 px
-torch.onnx.export(model, dummy, 'ocr_model.onnx', input_names=['image'], output_names=['logits'],
-                  dynamic_axes={'image':{3:'width'}, 'logits':{1:'time'}})
-print("ONNX saved!")
+# ==============================================================
+# 13. (Необязательно) экспорт ONNX
+# ==============================================================
 
-import onnxruntime as ort
-sess = ort.InferenceSession('ocr_model.onnx',
-                            providers=['CPUExecutionProvider'])
-print("ONNX runtime loaded.")
-
-# Квантизация
-!python -m onnxruntime.quantization.quantize_dynamic --model_path ocr_model.onnx --output_model ocr_model_int8.onnx --weight_type QInt8
-
-# ---------------------------------------------------------------
-# 14. Финальное тестирование на новой картинке (детерминированно)
-# ---------------------------------------------------------------
-def infer_onnx(path):
-    img = preprocess_pillow(Image.open(path), target_h=64)
-    w = img.size[0]
-    pad_w = math.ceil(w/32)*32
-    img = img.resize((pad_w,64), Image.BICUBIC)
-    arr = np.array(img).astype(np.float32)/255.
-    arr = (arr-0.5)/0.5
-    arr = arr[None,None,:,:]
-    logits = sess.run(None, {'image':arr})[0]  # (T,1,C)
-    pred = logits.argmax(-1).squeeze(1)
-    out=[]; prev=0
-    for idx in pred:
-        if idx!=prev and idx!=0:
-            out.append(idx)
-        prev=idx
-    return decode_seq(out)
-
-test_img = random.choice(list(DATA_DIR.glob('Screenshot_*.png')))
-print("Test image:", test_img.name)
-print("Inference:", infer_onnx(test_img))
-
-# ---------------------------------------------------------------
-# 15. Заключение
-# ---------------------------------------------------------------
-print("""
-✅ Мы построили полностью безразметочный pipeline:
-   1) ViT-MPLM self-supervised обучается реконструировать маскированные patch-токены
-   2) Сырые OCR-предсказания Tesseract очищаются kenLM-моделью
-   3) CRNN-CTC дообучается на псевдо-разметке; CER ↓ до {:.3f}
-   4) Модель экспортирована в ONNX + Int8 quantization
-""".format(best_cer))
+# dummy = torch.randn(1,1,64,512).to(device)
+# torch.onnx.export(model, dummy, "ocr_model.onnx",
+#                   input_names=["image"], output_names=["logits"],
+#                   dynamic_axes={"image":{3:"width"}, "logits":{1:"time"}})
+# print("ONNX сохранён → ocr_model.onnx")
