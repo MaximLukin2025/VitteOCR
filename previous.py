@@ -128,3 +128,13 @@ for idx in pred:
     prev = idx
 print("Картинка:", test_img.name)
 print("Предсказание:", decode_seq(out))
+
+# ==============================================================
+# 13. (Необязательно) экспорт ONNX
+# ==============================================================
+
+# dummy = torch.randn(1,1,64,512).to(device)
+# torch.onnx.export(model, dummy, "ocr_model.onnx",
+#                   input_names=["image"], output_names=["logits"],
+#                   dynamic_axes={"image":{3:"width"}, "logits":{1:"time"}})
+# print("ONNX сохранён → ocr_model.onnx")
